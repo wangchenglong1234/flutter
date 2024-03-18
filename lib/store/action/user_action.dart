@@ -9,4 +9,5 @@ class SetUserInfo {
 }
 
 // 退出登录
+// ignore: constant_identifier_names
 enum Actions { LogoutAction }

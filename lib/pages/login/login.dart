@@ -19,42 +19,53 @@ class _LoginState extends State<Login> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('登录')),
+      appBar: AppBar(title: const Text('巡检')),
       body: Padding(
         padding: const EdgeInsets.all(20.0), // 添加内边距以优化视觉效果
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          // mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch, // 使子Widget水平拉伸以填充列宽
           children: [
-            TextField(
-              controller: usernameController,
-              decoration: const InputDecoration(
-                labelText: '用户名',
-                border: OutlineInputBorder(),
+            const SizedBox(height: 30),
+            SizedBox(
+              height: 50,
+              child: TextField(
+                controller: usernameController,
+                decoration: const InputDecoration(
+                  labelText: '用户名',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
             const SizedBox(height: 16), // 添加间距
-            TextField(
-              controller: passwordController,
-              obscureText: true, // 隐藏密码
-              decoration: const InputDecoration(
-                labelText: '密码',
-                border: OutlineInputBorder(),
+            SizedBox(
+              height: 50,
+              child: TextField(
+                controller: passwordController,
+                obscureText: true, // 隐藏密码
+                decoration: const InputDecoration(
+                  labelText: '密码',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
             const SizedBox(height: 16), // 添加间距
             ElevatedButton(
-              style: ButtonStyle(
-                minimumSize:
-                    MaterialStateProperty.all(const Size(double.infinity, 56)),
+              style: ElevatedButton.styleFrom(
+                maximumSize: const Size(double.infinity, 50),
+                backgroundColor: Theme.of(context).primaryColor,
+                foregroundColor: Colors.white,
               ),
               onPressed: () {
                 StoreWrapper.store.dispatch(
                     SetUserInfo(UserState(userName: 'test', isLoggedIn: true)));
                 Routes.navigateTo(context, Routes.inspectionListPage,
-                    params: {}, replace: true);
+                    params: {});
               },
-              child: const Text('登录'),
+              child: const Text(
+                '登录',
+                // style: TextStyle(color: Colors.white),
+              ),
             ),
             StoreConnector<AppState, ViewModel>(
               converter: (store) => ViewModel.fromStore(store.state),

@@ -37,7 +37,7 @@ dependencies:
   cupertino_icons: ^1.0.2
 
 # 路由库
-  fluro: ^2.0.3
+  fluro: ^2.0.5
 
 # UI组件
   bruno: ^3.4.2
@@ -45,6 +45,15 @@ dependencies:
 # 全局状态管理
   redux: ^5.0.0
   flutter_redux: ^0.10.0
+# json序列化
+  json_annotation: ^4.6.0
+# toast提示
+  bot_toast: ^4.1.3
+# hook模式
+  flutter_hooks: ^0.20.5
+# http请求
+  dio: ^5.4.1
+  connectivity: ^3.0.6
  
 dev_dependencies:
   flutter_test:
@@ -57,6 +66,9 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^2.0.0
 
+  build_runner: ^2.3.2
+  json_serializable: ^6.1.5
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
@@ -67,6 +79,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/data.json
 
   # To add assets to your application, add an assets section, like this:
   # assets:

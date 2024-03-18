@@ -1,12 +1,24 @@
-import 'package:bruno/bruno.dart';
-import 'package:flutter/material.dart';
-import '../../utils/toolUtils.dart';
+import 'dart:convert';
 import 'package:app_inspection_system/routers/routers.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../utils/toolUtils.dart';
+import '../../utils/inspectionDataUtil.dart';
+import 'package:app_inspection_system/model/inspection_list_model.dart';
+import 'package:app_inspection_system/widgets/empty.dart';
+import 'package:app_inspection_system/widgets/loading.dart';
+import 'package:bot_toast/bot_toast.dart';
+import './widgets/render_header.dart';
+import './widgets/list_build.dart';
 
-int leftCount = 48;
-int rightCount = 192;
+const _tabHeight = 60;
+const _debounceTime = 50;
 
-List<String> tagList = ['类型1', '类型2', '类型3', '类型4', '类型5'];
+Future<Map<String, dynamic>> loadJsonFromAsset(String assetPath) async {
+  return await rootBundle.loadString(assetPath).then((jsonStr) {
+    return jsonDecode(jsonStr);
+  });
+}
 
 class InspectionList extends StatefulWidget {
   const InspectionList({super.key});
@@ -18,26 +30,147 @@ class InspectionList extends StatefulWidget {
 class _InspectionListState extends State<InspectionList> {
   int _currentIndex = 0;
   bool _isScrolling = false;
-  List<GlobalKey> keys = List.generate(leftCount + 1, (_) => GlobalKey());
+  bool _loading = true;
+  bool loadErr = false;
+  List<String> detectionTypeList = [];
+  List<InspectionListData> _listData = [];
+  List<InspectionListData> _sliceListData = [];
+  List<GlobalKey> _leftListKeys = [];
+  List<GlobalKey> _rightListKeys = [];
+  final GlobalKey _leftListKey = GlobalKey();
+  double _leftListHeight = 0;
+  Map<int, double> _leftIndexToRightPosMap = {};
   late final ScrollController _scrollControllerLeft;
   late final ScrollController _scrollControllerRight;
 
   @override
   void initState() {
-    // Uri uri = Uri.base;
-    // print(uri);
     ToolUtils.hideStatusBar();
     _scrollControllerLeft = ScrollController();
     _scrollControllerRight = ScrollController();
-    _scrollControllerRight.addListener(_handleScroll);
+    _scrollControllerRight
+        .addListener(ToolUtils.throttle(_handleScroll, _debounceTime));
+    _initListData();
     super.initState();
+  }
+
+  void _initListData() async {
+    await Future.delayed(const Duration(seconds: 2));
+    final jsonObj = await loadJsonFromAsset('assets/data.json');
+    if (mounted) {
+      InspectionListResponse res = InspectionListResponse.fromJson(jsonObj);
+      if (res.code == 200 && res.payload.content != null) {
+        final data = res.payload.content;
+        final dataSize = data?.length ?? 0;
+        setState(() {
+          _sliceListData = _listData = data ?? [];
+          _loading = false;
+        });
+        _initBoxPos(dataSize);
+      }
+    }
+  }
+
+  void _onPageSwitch() {
+    if (detectionTypeList.isEmpty) {
+      BotToast.showText(
+          text: "请添加侦测条件",
+          textStyle: const TextStyle(fontSize: 14, color: Colors.white));
+      return;
+    }
+    if (_sliceListData.isEmpty) {
+      BotToast.showText(
+          text: "数据为空",
+          textStyle: const TextStyle(fontSize: 14, color: Colors.white));
+      return;
+    }
+    InspectionDataUtil.setData(_sliceListData);
+    Routes.navigateTo(context, '/inspection_detail_page/:3');
+  }
+
+  //  按类型筛选
+  void _onCheckOption(List<int> selectedIndexes) {
+    _resetListPosInfo();
+    final List<String> optionList =
+        selectedIndexes.map((e) => (e + 1).toString()).toList();
+    detectionTypeList = optionList;
+    List<InspectionListData> filterData = [];
+    if (optionList.isNotEmpty) {
+      for (var item in _listData) {
+        final childData = item.children ?? [];
+        final workStationData =
+            InspectionListData.fromJson(jsonDecode(jsonEncode(item))); //深拷贝
+        workStationData.children = [];
+        if (childData.isNotEmpty) {
+          for (var subItem in childData) {
+            List<String> detectionList = subItem.detection?.split(',') ?? [];
+            for (var detection in detectionList) {
+              if (optionList.contains(detection)) {
+                workStationData.children?.add(subItem);
+                break;
+              }
+            }
+          }
+        }
+        if (workStationData.children!.isNotEmpty) {
+          filterData.add(workStationData);
+        }
+      }
+    } else {
+      filterData = _listData;
+    }
+    setState(() {
+      _sliceListData = filterData;
+    });
+
+    _initBoxPos(filterData.length);
+  }
+
+  // 初始化元素位置信息
+  void _initBoxPos(int dataSize) {
+    _leftListKeys = List.generate(dataSize, (_) => GlobalKey());
+    _rightListKeys = List.generate(dataSize, (_) => GlobalKey());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      int count = _rightListKeys.length;
+      for (var i = 0; i < count; i++) {
+        if (_rightListKeys[i].currentContext != null) {
+          final RenderBox renderBox =
+              _rightListKeys[i].currentContext!.findRenderObject() as RenderBox;
+          final offset = renderBox.localToGlobal(Offset.zero);
+          final scrollPos = _scrollControllerRight.offset;
+          _leftIndexToRightPosMap[i] = (offset.dy - _tabHeight) - scrollPos;
+        } else {
+          _leftIndexToRightPosMap[i] = 0.0;
+        }
+      }
+      for (var element in _leftListKeys) {
+        final RenderBox renderBox =
+            element.currentContext!.findRenderObject() as RenderBox;
+        _leftListHeight += renderBox.size.height;
+      }
+    });
+  }
+
+  void _resetListPosInfo() {
+    _currentIndex = 0;
+    _leftListHeight = 0;
+    _leftIndexToRightPosMap = {};
+    if (_scrollControllerLeft.hasClients) _scrollControllerLeft.jumpTo(0);
+    if (_scrollControllerRight.hasClients) _scrollControllerRight.jumpTo(0);
   }
 
   void _handleScroll() {
     if (_isScrolling) return;
     // 获取当前滚动位置
     double currentScrollPosition = _scrollControllerRight.offset;
-    int index = (currentScrollPosition / (4 * 61)).floor();
+    int index = 0;
+    for (var key in _leftIndexToRightPosMap.keys) {
+      if (currentScrollPosition < _leftIndexToRightPosMap[key]!) {
+        index = key - 1;
+        break;
+      }
+    }
+    if (index == _currentIndex) return;
     _resetLeftScroll(index);
     setState(() {
       _currentIndex = index;
@@ -45,16 +178,17 @@ class _InspectionListState extends State<InspectionList> {
   }
 
   void _onPressList(int val) {
+    if (val == _currentIndex) return;
     setState(() {
       _currentIndex = val;
       _isScrolling = true;
     });
     _resetLeftScroll(val);
     if (_scrollControllerRight.hasClients) {
-      int pos = val * (4 * 61);
+      double pos = _leftIndexToRightPosMap[val] ?? 0;
       _scrollControllerRight
           .animateTo(
-            pos.toDouble(), // 滚动到Y轴坐标为0的位置，也就是顶部
+            pos, // 滚动到Y轴坐标为0的位置，也就是顶部
             duration: const Duration(milliseconds: 200), // 可选，设置动画持续时间
             curve: Curves.easeInOut, // 可选，设置动画曲线
           )
@@ -70,16 +204,23 @@ class _InspectionListState extends State<InspectionList> {
     if (_scrollControllerLeft.hasClients) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final RenderBox fRenderBox =
-            keys[48].currentContext?.findRenderObject() as RenderBox;
+            _leftListKey.currentContext?.findRenderObject() as RenderBox;
         double height = fRenderBox.size.height / 2;
-        if (keys[index].currentContext != null) {
-          final RenderBox renderBox =
-              keys[index].currentContext!.findRenderObject() as RenderBox;
+        if (_leftListKeys[index].currentContext != null) {
+          final RenderBox renderBox = _leftListKeys[index]
+              .currentContext!
+              .findRenderObject() as RenderBox;
           final globalPosition = renderBox.localToGlobal(Offset.zero);
           final offset = _scrollControllerLeft.offset;
           // 计算按钮顶部距离视口顶部的距离
-          final distanceFromViewportTop = globalPosition.dy;
-          double scrollPos = offset - (height - distanceFromViewportTop);
+          final distanceFromViewportTop = (globalPosition.dy - _tabHeight);
+          final cH = renderBox.size.height / 2;
+          double scrollPos = offset - (height - distanceFromViewportTop) + cH;
+          if (scrollPos <= cH) {
+            scrollPos = 0; //=============解决滚动高度小于0时，导致的布局拉伸bug
+          } else if (scrollPos >= (_leftListHeight - height * 2)) {
+            scrollPos = _leftListHeight - height * 2;
+          }
           _scrollControllerLeft.animateTo(
             scrollPos, // 滚动到Y轴坐标为0的位置，也就是顶部
             duration: const Duration(milliseconds: 200), // 可选，设置动画持续时间
@@ -95,166 +236,40 @@ class _InspectionListState extends State<InspectionList> {
     return Scaffold(
       body: Column(
         children: [
-          buildHeader(),
-          Expanded(
-              key: keys[48],
-              flex: 1,
-              child: Row(
-                children: [
-                  Expanded(
+          RenderHeader(
+            tabHeight: _tabHeight,
+            onCheckOption: _onCheckOption,
+            onPageSwitch: _onPageSwitch,
+          ),
+          LoadingContent(
+              loading: _loading,
+              widget: EmptyContent(
+                  isEmpty: _sliceListData.isEmpty,
+                  widget: Expanded(
                     flex: 1,
-                    child: buildMainListContent(
-                        leftCount, _currentIndex, _onPressList),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: buildListContent(rightCount),
-                  )
-                ],
-              )),
-        ],
-      ),
-    );
-  }
-
-  Widget buildHeader() {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      height: 60,
-      color: const Color.fromARGB(255, 212, 211, 211),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 1,
-            child: ListView(
-                padding: const EdgeInsets.only(right: 20),
-                scrollDirection: Axis.horizontal,
-                children: [
-                  BrnSelectTag(
-                      tags: tagList,
-                      spacing: 12,
-                      isSingleSelect: false,
-                      tagWidth: 10,
-                      initTagState: [true],
-                      onSelect: (selectedIndexes) {
-                        BrnToast.show(selectedIndexes.toString(), context);
-                      })
-                ]),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 10), // 四周都有16像素的外边距
-            child: ElevatedButton(
-              onPressed: () {
-                String id = '23';
-                Routes.navigateTo(context, '/inspection_detail_page/:$id');
-              },
-              child: const Text('新增'),
-            ),
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget buildMainListContent(
-      int size, int currentIndex, Function(int value) handlePress) {
-    return ListView(
-      controller: _scrollControllerLeft,
-      padding: EdgeInsets.zero,
-      children: buildMainListItem(size, currentIndex, handlePress),
-    );
-  }
-
-  List<Widget> buildMainListItem(
-      int size, int currentIndex, Function(int value) handlePress) {
-    List<Widget> tempList = [];
-    for (var i = 0; i < size; i++) {
-      tempList.add(Column(
-        key: keys[i],
-        children: [
-          SizedBox(
-            width: double.infinity,
-            height: 60,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      currentIndex == i ? Colors.grey : Colors.white,
-                  shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero, side: BorderSide.none)),
-              onPressed: () {
-                handlePress(i);
-              },
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    '功站$i',
-                    style: TextStyle(
-                      color: currentIndex == i ? Colors.white : Colors.black,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          key: _leftListKey,
+                          flex: 1,
+                          child: buildMainListContent(
+                              _sliceListData,
+                              _leftListKeys,
+                              _currentIndex,
+                              _scrollControllerLeft,
+                              _onPressList),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: buildListContent(_sliceListData,
+                              _rightListKeys, _scrollControllerRight),
+                        )
+                      ],
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const Divider(
-            height: 1,
-          ),
+                  )))
         ],
-      ));
-    }
-    return tempList;
-  }
-
-  Widget buildListContent(int size) {
-    return ListView(
-      controller: _scrollControllerRight, // 将ScrollController赋给ListView
-      padding: EdgeInsets.zero,
-      children: buildListItem(size),
+      ),
     );
-  }
-
-  List<Widget> buildListItem(int size) {
-    List<Widget> tempList = [];
-    for (var i = 0; i < size; i++) {
-      tempList.add(Column(
-        children: [
-          SizedBox(
-            height: 60,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(right: 10),
-                  child: BrnTagCustom(
-                    tagText: 'D',
-                    backgroundColor: Colors.green,
-                    tagBorderRadius: const BorderRadius.all(Radius.circular(5)),
-                  ),
-                ),
-                Container(
-                  margin: const EdgeInsets.only(right: 10),
-                  child: BrnTagCustom(
-                    tagText: '人',
-                    backgroundColor: Colors.yellow,
-                    tagBorderRadius: const BorderRadius.all(Radius.circular(5)),
-                  ),
-                ),
-                Text(
-                  '检查设备上水水水水设备$i',
-                ),
-              ],
-            ),
-          ),
-          const Divider(
-            height: 1,
-          ),
-        ],
-      ));
-    }
-    return tempList;
   }
 
   @override
