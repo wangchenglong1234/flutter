@@ -6,6 +6,7 @@ import 'package:flutter_redux/flutter_redux.dart';
 import 'pages/login/login.dart';
 import 'routers/routers.dart';
 import './store/index.dart';
+import './theme.dart';
 
 void main() {
   // 通常，在应用启动阶段，特别是在 Dart 的 main() 函数中，
@@ -14,12 +15,7 @@ void main() {
   //就需要先调用 WidgetsFlutterBinding.ensureInitialized() 方法。
   WidgetsFlutterBinding.ensureInitialized();
   Routes.configureRoutes(Routes.router);
-  BrnInitializer.register(
-      allThemeConfig: BrnAllThemeConfig(
-          // 全局配置
-          commonConfig: BrnCommonConfig(brandPrimary: const Color(0xFF3072F6)),
-          // dialog配置
-          dialogConfig: BrnDialogConfig(radius: 12.0)));
+  BrnInitializer.register(allThemeConfig: getBrunoTheme());
   runApp(StoreProvider(
     store: StoreWrapper.store,
     child: const MyApp(),
@@ -40,21 +36,7 @@ class MyApp extends StatelessWidget {
       },
       navigatorObservers: [BotToastNavigatorObserver()],
       // 定制主题
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3072F6)),
-        useMaterial3: true,
-        dialogTheme: const DialogTheme(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        ),
-        textTheme: const TextTheme(
-          // 设置默认文本样式
-          bodyLarge: TextStyle(fontSize: 16.0), // 一般正文大小
-          bodyMedium: TextStyle(fontSize: 14.0), // 可选，另一个正文大小
-          displayLarge: TextStyle(fontSize: 32.0), // 大标题
-          // 其他文本样式的大小，如标题、副标题等
-          // ...
-        ),
-      ),
+      theme: getMaterialTheme(),
       home: const Login(),
       // showSemanticsDebugger: !isProduction,
       // 在main函数中，我们初始化路由，并在MaterialApp中通过onGenerateRoute属性设置路由生成器为Routes.router.generator，

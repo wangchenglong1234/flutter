@@ -29,7 +29,7 @@ class httpUtil {
   /// Dio实例
   static Dio _dio = Dio();
 
-  /// 初始化
+  /// 私有构造函数
   httpUtil._internal() {
     // 初始化基本选项
     BaseOptions options = BaseOptions(
@@ -84,7 +84,6 @@ class httpUtil {
   }
 
   /// 开启日志打印
-  /// 需要打印日志的接口在接口请求前 httpUtil.instance?.openLog();
   void openLog() {
     _dio.interceptors
         .add(LogInterceptor(responseHeader: false, responseBody: true));
